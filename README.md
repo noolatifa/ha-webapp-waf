@@ -8,7 +8,8 @@ Documentation: [docs/00-index.md](docs/00-index.md)
 
 ## Status
 
-Work in progress (V1): stages 01 to 10 completed and validated.
+Status: V1, stages 01–13 completed; 
+V2 in progress.
 
 ## Roadmap
 
