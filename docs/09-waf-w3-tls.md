@@ -1,113 +1,120 @@
-# 09 · W3: TLS Certificate `www.latifa.com`
+# 09 · W3: Secure HTTPS
 
 | | |
 |---|---|
-| **Objective** | Replace the image's generic certificate with a certificate issued for the service name |
-| **Where** | waf1, `/opt/waf` |
+| **Objective** | HTTPS only, certificate `www.latifa.test` signed by a lab CA and trusted by the clients |
+| **Where** | waf1 (root), host (PowerShell) |
 | **Before** | Stage 08 |
-| **After** | The WAF presents `CN=www.latifa.com` over HTTPS; filtering still active |
+| **After** | HTTP → 301; padlock without warning; hardened headers |
 
----
-
-## Key notions
-
-> **The private key proves. The certificate presents. TLS encrypts.**
-
-| Element | Role | Visibility |
-|---|---|---|
-| **TLS** (successor of SSL) | Protocol that encrypts the connection and authenticates the **server** | — |
-| **Private key** (`.key`) | The only one able to decrypt what is encrypted with the public key; proves identity | **Secret**, on the server |
-| **Certificate** (`.crt`) | Server name, dates, **public key**, issuer's signature | **Public**, sent to every client |
-| **Self-signed** | Signed by its own key: encrypts just as well, but no authority vouches for it → browser warning | — |
-| **`hosts` file** (client side, end of V1) | **Find** the server: `www.latifa.com` → VIP | On each client |
-
-- TLS only authenticates the server (not the client: that would be mTLS).
-- TLS **authorises no one**: access control is the job of the firewall and the WAF.
-- **TLS termination on the WAF**: required so that ModSecurity can **read** the request.
-- The image's certificate is **replaced**, not edited: the name is part of the **signed** data.
-
----
-
-## 1. Create the key and the certificate
+## 1. Create the lab CA (waf1)
 
 ```bash
-cd /opt/waf && mkdir certs
-openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/latifa.key -out certs/latifa.crt -days 365 -subj "/CN=www.latifa.com" -addext "subjectAltName=DNS:www.latifa.com"
+mkdir -m 700 /root/lab-ca && cd /root/lab-ca
+openssl req -x509 -newkey rsa:4096 -keyout ca.key -out ca.crt -days 1825 -subj "/CN=HA-WAF Lab Root CA" -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign,cRLSign"
+chmod 600 ca.key
 ```
-| Option | Role |
-|---|---|
-| `req -x509` | Directly produces a **self-signed** certificate |
-| `-newkey rsa:2048` | New 2048-bit RSA private key |
-| `-nodes` | Key without a passphrase (otherwise nginx cannot start unattended) |
-| `-keyout` / `-out` | Key file / certificate file |
-| `-days 365` | One-year validity |
-| `-subj "/CN=…"` | Server name (Common Name) |
-| `-addext "subjectAltName=DNS:…"` | Name in the **SAN**, the only field read by modern browsers |
+Choose a CA passphrase (4 characters minimum); it is asked at every signature.
 
-The `.+++…*` output = openssl searching for the key's prime numbers (random, expected).
-
-**Verification**:
-```bash
-ls -l certs
-openssl x509 -in certs/latifa.crt -noout -subject -dates -ext subjectAltName
-```
-- `latifa.crt` in `-rw-r--r--` (public), `latifa.key` in `-rw-------` (secret) — openssl protects the key on its own.
-- `subject=CN=www.latifa.com`, one-year validity (dates in GMT), `DNS:www.latifa.com`.
-
-## 2. Give the key to nginx (least privilege)
+## 2. Create and sign the site certificate (waf1, `/root/lab-ca`)
 
 ```bash
-docker compose exec waf id
-chown 101:101 certs/latifa.key
-ls -ln certs
+openssl req -new -newkey rsa:2048 -nodes -keyout latifa.key -out latifa.csr -subj "/CN=www.latifa.test"
+printf 'basicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectAltName=DNS:www.latifa.test,IP:192.168.80.100,IP:192.168.80.11,IP:192.168.80.12\n' > latifa.ext
+openssl x509 -req -in latifa.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out latifa.crt -days 365 -sha256 -extfile latifa.ext
+openssl verify -CAfile ca.crt latifa.crt
 ```
-- nginx runs as **uid 101** inside the container.
-- A Docker volume keeps the owner **numbers**: uid 101 on waf1 = uid 101 (nginx) in the container.
-- The key stays in **600**: readable by nginx only (root can always read everything).
-- `ls -ln`: displays the numbers (`101 101`) instead of the names.
+**Expected**: `latifa.crt: OK`.
 
-## 3. Mount and use
+## 3. Install the certificate for nginx (waf1)
 
-`docker-compose.yml`, under `volumes:`:
+```bash
+mkdir -p /opt/waf/certs
+\cp /root/lab-ca/latifa.crt /root/lab-ca/latifa.key /opt/waf/certs/
+chown 101:101 /opt/waf/certs/latifa.key && chmod 600 /opt/waf/certs/latifa.key
+rm -f /root/lab-ca/latifa.key /root/lab-ca/latifa.crt /root/lab-ca/latifa.csr
+```
+`/root/lab-ca` keeps `ca.key`, `ca.crt`, `ca.srl`, `latifa.ext` (renewal).
+
+## 4. Configure nginx (waf1, `/opt/waf`)
+
+`docker-compose.yml`, add under `volumes:`:
 ```yaml
       - ./certs:/etc/nginx/certs:ro,z
 ```
-`nginx/default.conf.template`, in the `listen 8443 ssl` block:
+
+`nginx/default.conf.template`:
 ```nginx
+server_tokens off;
+
+upstream apps {
+    hash $remote_addr consistent;
+    server 10.0.1.2:80 max_fails=3 fail_timeout=10s;
+    server 10.0.2.2:80 max_fails=3 fail_timeout=10s;
+}
+
+server {
+    listen 8080;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 8443 ssl;
     ssl_certificate     /etc/nginx/certs/latifa.crt;
     ssl_certificate_key /etc/nginx/certs/latifa.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    location / {
+        proxy_pass http://apps;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        add_header X-Backend $upstream_addr always;
+        proxy_hide_header X-Powered-By;
+        proxy_cookie_flags ~ secure;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        include includes/location_common.conf;
+    }
+}
 ```
 ```bash
-docker compose up -d && docker compose ps
+cd /opt/waf && docker compose up -d && sleep 10 && docker compose exec waf nginx -t && docker compose ps
 ```
+**Expected**: `test is successful`, `(healthy)`.
 
----
+## 5. Trust the CA on the host
 
-## Tests
-
-Certificate **actually served** (waf1):
+waf1:
 ```bash
-openssl s_client -connect 127.0.0.1:443 </dev/null 2>/dev/null | openssl x509 -noout -subject
+cp /root/lab-ca/ca.crt /tmp/ca.crt && chmod 644 /tmp/ca.crt
 ```
-- `s_client` acts as a TLS client · `</dev/null` ends the connection · `2>/dev/null` hides technical messages.
-- **Expected**: `subject=CN=www.latifa.com`.
-
 Host:
 ```
-curl.exe -k -s -o NUL -w "%{http_code}\n" "https://192.168.80.11/login.php"
-curl.exe -k -s -o NUL -w "%{http_code}\n" "https://192.168.80.11/login.php?id=1'%20OR%20'1'='1"
+scp <user>@192.168.80.11:/tmp/ca.crt $HOME\Downloads\ca.crt
+Import-Certificate -FilePath $HOME\Downloads\ca.crt -CertStoreLocation Cert:\CurrentUser\Root
 ```
-`-k`: accepts the self-signed certificate. **Expected**: `200` then `403`.
+Accept the Windows warning after checking the thumbprint. Then remove `/tmp/ca.crt` (waf1) and the downloaded file.
+
+Host, PowerShell as administrator:
+```
+Add-Content -Path C:\Windows\System32\drivers\etc\hosts -Value "192.168.80.11 www.latifa.test"
+```
+The name points to waf1 until stage 12 (VIP).
 
 Snapshot **`waf1-w3-ok`**.
 
----
+## Tests (host)
 
-## ⚠️ Issues
+| Command | Expected |
+|---|---|
+| `curl.exe -sS --ssl-no-revoke -o NUL -w "%{http_code}\n" https://www.latifa.test/login.php` | `200` |
+| `curl.exe -sI http://www.latifa.test/login.php` | `301`, `Location: https://…` |
+| `curl.exe -sS --ssl-no-revoke -D - -o NUL https://www.latifa.test/login.php` | `Server: nginx`, `Strict-Transport-Security`, cookies `Secure`, no `X-Powered-By` |
+| `curl.exe -sS --ssl-no-revoke -o NUL -w "%{http_code}\n" "https://www.latifa.test/login.php?id=1'%20OR%20'1'='1"` | `403` |
+| Browser `https://www.latifa.test/login.php` | Padlock, issued by `HA-WAF Lab Root CA` |
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| The name appears as `[www.latifa.com](https://…)` | Rich-text copy and paste turned the domain into a link | Check at the source: `openssl x509 … -subject \| grep -c "("` → `0` |
-| `No such file or directory` on creation | Run from inside `certs/` (path `certs/certs/…`) | `cd ..` |
-| nginx cannot read the key | Key `root:root` in 600, nginx as uid 101 | `chown 101:101` |
-| Browser warning | Self-signed | Accepted (lab) · option: lab CA installed on the clients |
+## ⚠️ Notes
+
+- `--ssl-no-revoke`: Windows curl checks revocation, and the lab CA publishes no revocation list.
+- Run `nginx -t` only after the container has started (`sleep 10`), otherwise `RESOLVER_CONFIG` errors appear.
+- If the browser still shows "Not secure", restart it (`chrome://restart`).
