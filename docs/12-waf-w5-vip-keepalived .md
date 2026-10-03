@@ -35,7 +35,9 @@ EOF
 chmod 700 /usr/libexec/keepalived/check_waf.sh && restorecon -Rv /usr/libexec/keepalived
 /usr/libexec/keepalived/check_waf.sh; echo "code: $?"
 ```
-**Expected**: `code: 0`. The script must stay in `/usr/libexec/keepalived/` (SELinux).
+**Expected**: `code: 0`. The script must stay in `/usr/libexec/keepalived/` (SELinux) and relies on the container name `waf` (stage 07).
+
+Files: [`configs/waf/keepalived/`](../configs/waf/keepalived/).
 
 ## 4. Configuration
 

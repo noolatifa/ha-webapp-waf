@@ -1,58 +1,155 @@
-# High-Availability Web Application Behind an Open-Source WAF
+# 07 · W1: nginx as a Load Balancer
 
-Lab build of a highly available web application protected by a web application firewall, on VMware Workstation, RHEL 9.5 and Docker Compose.
-
-**Stack:** nginx, ModSecurity v3, OWASP Core Rule Set, keepalived, DVWA, MariaDB.
-**Status:** stages 01 to 13 completed and validated. Final clean-up (W7) in progress.
-
-![Architecture](images/architecture.svg)
+| | |
+|---|---|
+| **Objective** | waf1 distributes traffic between app1 and app2, removes a failed app, keeps each client on the same app |
+| **Where** | waf1, as root, in `/opt/waf` |
+| **Before** | Stage 05 (app1 and app2 answer from waf1); image `owasp/modsecurity-crs:nginx` available |
+| **After** | `waf` container `(healthy)`, failover and sticky sessions validated. ModSecurity still **disabled** |
 
 ---
 
-## Documentation
+## The image used
 
-| File | Content |
+`owasp/modsecurity-crs:nginx` = nginx + ModSecurity v3 + OWASP Core Rule Set, maintained by the OWASP project.
+Documentation: https://github.com/coreruleset/modsecurity-crs-docker — what matters here:
+
+| Characteristic | Consequence |
 |---|---|
-| [01-vmware-networks](01-vmware-networks.md) | Virtual networks and VM adapters |
-| [02-vm-template-and-cloning](02-vm-template-and-cloning.md) | Template VM and clones |
-| [03-vm-networking](03-vm-networking.md) | Interface identification, addressing, link tests |
-| [04-lan-database](04-lan-database.md) | Data network, db1, persistence, least privilege |
-| [05-lan-applications](05-lan-applications.md) | Front VLANs (macvlan), app1, app2 |
-| [06-lan-replication](06-lan-replication.md) | db2 and GTID replication |
-| [07-waf-w1-load-balancer](07-waf-w1-load-balancer.md) | Reverse proxy and load balancer |
-| [08-waf-w2-modsecurity](08-waf-w2-modsecurity.md) | ModSecurity and OWASP CRS |
-| [09-waf-w3-tls](09-waf-w3-tls.md) | Secure HTTPS: lab CA, trusted certificate, hardening |
-| [10-waf-w4-second-node](10-waf-w4-second-node.md) | Second WAF node |
-| [11-connectivity-tests](11-connectivity-tests.md) | Full test matrix |
-| [12-waf-w5-vip-keepalived](12-waf-w5-vip-keepalived.md) | Virtual IP, VRRP failover, WAF health check |
-| [13-waf-w6-firewall](13-waf-w6-firewall.md) | Host firewall on the WAF nodes |
+| nginx runs as an **unprivileged user** (uid 101) | It listens on **8080 / 8443** (impossible below 1024) → publish `80:8080` and `443:8443` |
+| Configuration **generated from templates** at startup | Mount our file in `/etc/nginx/templates/conf.d/…template`, otherwise it is overwritten |
+| Built-in healthcheck | Queries `https://localhost:8443/healthz` → an 8443 `server` block is **required** |
+| Self-signed certificate generated on first start | `/etc/nginx/conf/server.crt` and `.key` (replaced in W3) |
 
-## Addressing plan
+---
 
-| Network | Subnet | Hosts |
+## 1. Files
+
+```bash
+mkdir -p /opt/waf/nginx && cd /opt/waf
+```
+
+`/opt/waf/docker-compose.yml`:
+```yaml
+name: wafconf
+
+services:
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    container_name: waf
+    restart: unless-stopped
+    environment:
+      BACKEND: http://10.0.1.2
+      MODSEC_RULE_ENGINE: "Off"
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro,z
+```
+- Service and container named `waf`: **identical on waf1 and waf2**; the keepalived health check (stage 12) relies on the container name.
+- `BACKEND`: required by the image's default configuration; unused once our template replaces it.
+- `"Off"` **in quotes**: without them, YAML reads `Off` as the boolean `false`.
+
+`/opt/waf/nginx/default.conf.template` (W1 version):
+```nginx
+upstream apps {
+    server 10.0.1.2:80 max_fails=3 fail_timeout=10s;
+    server 10.0.2.2:80 max_fails=3 fail_timeout=10s;
+}
+
+server {
+    listen 8080;
+    location / {
+        proxy_pass http://apps;
+        proxy_set_header Host            $host;
+        proxy_set_header X-Real-IP       $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        add_header X-Backend $upstream_addr always;
+        include includes/location_common.conf;
+    }
+}
+
+server {
+    listen 8443 ssl;
+    ssl_certificate     /etc/nginx/conf/server.crt;
+    ssl_certificate_key /etc/nginx/conf/server.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    location / {
+        proxy_pass http://apps;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        add_header X-Backend $upstream_addr always;
+        include includes/location_common.conf;
+    }
+}
+```
+| Directive | Role |
+|---|---|
+| `upstream apps` | The group of servers behind the load balancer |
+| `max_fails=3 fail_timeout=10s` | After 3 failures, the app is removed for 10 s, then retried (automatic reintegration) |
+| `proxy_pass http://apps` | Forwards the request to the group |
+| `X-Real-IP`, `X-Forwarded-For` | The app sees the client's real IP, not the WAF's |
+| `X-Forwarded-Proto https` | The app knows the client arrived over HTTPS |
+| `add_header X-Backend $upstream_addr always` | Shows which app answered. ⚠️ **Test aid**: exposes internal addresses, to be removed in W7 |
+| `include includes/location_common.conf` | Common settings provided by the image |
+| `ssl_protocols TLSv1.2 TLSv1.3` | Rejects SSLv3, TLS 1.0 and 1.1 |
+
+Without `hash` (see §3), distribution is **round-robin**: each request goes alternately to app1, then app2.
+
+## 2. Start
+
+```bash
+docker compose up -d && docker compose exec waf nginx -t && docker compose ps
+```
+- `nginx -t`: checks the syntax of the generated configuration.
+- **Expected**: `syntax is ok`, then `(healthy)` after a few seconds.
+
+**Tests from the host (PowerShell)**:
+```
+1..4 | ForEach-Object { curl.exe -s -o NUL -D - http://192.168.80.11/login.php | Select-String "x-backend" }
+```
+- `-D -` displays the headers; `Select-String` keeps the `X-Backend` line.
+- **Expected**: alternating `10.0.1.2:80` / `10.0.2.2:80`.
+
+**Failover**: on lan `docker stop app1`, run the command again → `10.0.2.2:80`, sometimes `10.0.1.2:80, 10.0.2.2:80` (attempt on app1, failure, retry on app2 **with no error for the client**). Then `docker start app1`, wait ~15 s → app1 reintegrated.
+
+---
+
+## 3. Sticky sessions
+
+**The round-robin problem**: the DVWA session is stored **in the app**. If the next click lands on the other app, that app does not know the session → back to the login page on every click.
+
+Add as the first line of `upstream apps`:
+```nginx
+    hash $remote_addr consistent;
+```
+then `docker compose restart waf` (or `up -d --force-recreate`).
+
+- `hash $remote_addr`: the client's **full IP address** always selects the same app. The order of arrival does not matter.
+- `consistent`: if an app fails, **only its clients** are moved; the others stay where they are.
+- Why not `ip_hash`: it only uses the **first 3 octets** → every `192.168.80.x` client would land on the same app.
+
+**Test**: from the host, always the same app (here `10.0.1.2`); from waf1 (`curl -s -o /dev/null -D - http://192.168.80.11/login.php | grep -i x-backend`), always the other one (here `10.0.2.2`).
+
+| Situation | Site available | Session preserved |
 |---|---|---|
-| WAN (host-only) | 192.168.80.0/24 | host .254, waf1 .11, waf2 .12, VIP .100 |
-| front1 | 10.0.1.0/29 | app1 .2, waf1 .3, waf2 .4 |
-| front2 | 10.0.2.0/29 | app2 .2, waf1 .3, waf2 .4 |
-| net-data (internal) | 10.0.3.0/28 | db1 .2, db2 .3, app1 .5, app2 .6 |
-| NAT (temporary) | 192.168.x.0/24 | build only |
+| 2 apps up, with `hash` | Yes | Yes |
+| 2 apps up, without `hash` | Yes | No: logged out on every click |
+| app1 fails → its clients move to app2 | Yes | No: one re-login |
+| Clients already on app2 | Yes | Yes |
+| app1 comes back → its clients return to it | Yes | No: one re-login |
 
-## Key design decisions
+> HA guarantees **availability**, not **session continuity**. V2: shared sessions (Redis or shared volume).
 
-| Decision | Rationale |
-|---|---|
-| No proxy or DNS VM in front of the WAF cluster | Would be a single point of failure |
-| VRRP in unicast over front1 | VRRP is not strongly authenticated; kept off the client network |
-| One VLAN per application, internal data network | Segmentation; the database never leaves the LAN host |
-| HTTPS only, certificate signed by an internal CA | Trusted padlock without a public domain; HTTP redirected, HSTS |
-| Domain `latifa.test` | Reserved by RFC 2606, never resolvable on the Internet |
-| keepalived tracks the WAF container health | VIP released when nginx fails, not only when the VM fails |
-| SSH from the admin host only | Smaller attack surface; no SSH between nodes |
-| `hash $remote_addr consistent` load balancing | Session affinity across 192.168.80.x clients |
-| DVWA as the protected application | Deliberately vulnerable, backed by MariaDB |
+---
 
-## Roadmap
+## ⚠️ Issues
 
-- **V1:** WAF/LB cluster with virtual IP, two application instances, replicated database.
-- **V2:** SQL proxy with automatic failover, backups, shared sessions.
-- **V3:** Security monitoring (Wazuh) and centralised logging.
+| Symptom | Cause | Fix |
+|---|---|---|
+| Container `unhealthy` (exit code 7) | The healthcheck targets 8443, only 8080 was configured | Add the 8443 ssl `server` block |
+| Configuration ignored | File mounted in `conf.d` instead of `templates/` | Mount in `/etc/nginx/templates/conf.d/` |
+| `MODSEC_RULE_ENGINE` misread | YAML boolean | Quotes |

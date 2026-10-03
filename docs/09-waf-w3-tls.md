@@ -59,24 +59,30 @@ server {
 }
 
 server {
-    listen 8443 ssl;
+    listen 8443 ssl default_server;
+    server_name _;
+
     ssl_certificate     /etc/nginx/certs/latifa.crt;
     ssl_certificate_key /etc/nginx/certs/latifa.key;
     ssl_protocols       TLSv1.2 TLSv1.3;
+
     location / {
         proxy_pass http://apps;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto https;
         add_header X-Backend $upstream_addr always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
         proxy_hide_header X-Powered-By;
         proxy_cookie_flags ~ secure;
-        add_header Strict-Transport-Security "max-age=31536000" always;
-        include includes/location_common.conf;
     }
+
+    include includes/location_common.conf;
 }
 ```
+`X-Backend` is a test aid, replaced by an access log at the end of V1. Final file: [`configs/waf/nginx/default.conf.template`](../configs/waf/nginx/default.conf.template).
+
 ```bash
 cd /opt/waf && docker compose up -d && sleep 10 && docker compose exec waf nginx -t && docker compose ps
 ```
