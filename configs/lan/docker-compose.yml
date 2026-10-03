@@ -1,0 +1,105 @@
+name: labha
+
+networks:
+  net-data:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-netdata
+    internal: true
+    ipam:
+      config:
+        - subnet: 10.0.3.0/28
+  front1:
+    driver: macvlan
+    driver_opts:
+      parent: ens160
+    ipam:
+      config:
+        - subnet: 10.0.1.0/29
+          gateway: 10.0.1.1
+  front2:
+    driver: macvlan
+    driver_opts:
+      parent: ens224
+    ipam:
+      config:
+        - subnet: 10.0.2.0/29
+          gateway: 10.0.2.1
+
+services:
+  db1:
+    image: mariadb:11
+    container_name: db1
+    command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: dvwa
+      MARIADB_USER: dvwa
+      MARIADB_PASSWORD: ${DB_APP_PASSWORD}
+    volumes:
+      - db1-data:/var/lib/mysql
+      - ./init/db1-repl.sql:/docker-entrypoint-initdb.d/10-repl.sql:ro,z
+    networks:
+      net-data:
+        ipv4_address: 10.0.3.2
+        aliases: [db]
+
+
+  db2:
+    image: mariadb:11
+    container_name: db2
+    command: --server-id=2 --read-only=ON
+    restart: unless-stopped
+    depends_on: [db1]
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: dvwa
+      MARIADB_USER: dvwa
+      MARIADB_PASSWORD: ${DB_APP_PASSWORD}
+    volumes:
+      - db2-data:/var/lib/mysql
+      - ./init/db2-repl.sql:/docker-entrypoint-initdb.d/10-repl.sql:ro,z
+    networks:
+      net-data:
+        ipv4_address: 10.0.3.3
+
+
+
+
+
+  app1:
+    image: ghcr.io/digininja/dvwa:latest
+    container_name: app1
+    restart: unless-stopped
+    environment:
+      DB_SERVER: db
+      DB_DATABASE: dvwa
+      DB_USERNAME: dvwa
+      DB_PASSWORD: ${DB_APP_PASSWORD}
+    depends_on: [db1]
+    networks:
+      front1:
+        ipv4_address: 10.0.1.2
+      net-data:
+        ipv4_address: 10.0.3.5
+
+  app2:
+    image: ghcr.io/digininja/dvwa:latest
+    container_name: app2
+    restart: unless-stopped
+    environment:
+      DB_SERVER: db
+      DB_DATABASE: dvwa
+      DB_USERNAME: dvwa
+      DB_PASSWORD: ${DB_APP_PASSWORD}
+    depends_on: [db1]
+    networks:
+      front2:
+        ipv4_address: 10.0.2.2
+      net-data:
+        ipv4_address: 10.0.3.6
+
+volumes:
+  db1-data:
+  db2-data:

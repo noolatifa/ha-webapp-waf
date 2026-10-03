@@ -1,0 +1,17 @@
+name: wafconf
+services:
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    container_name: waf
+    restart: unless-stopped
+    environment: 
+      BACKEND: http://10.0.1.2
+      MODSEC_RULE_ENGINE: "On"
+
+    ports:
+      - "80:8080"
+      - "443:8443"
+
+    volumes:
+      - ./nginx/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro,z
+      - ./certs:/etc/nginx/certs:ro,z

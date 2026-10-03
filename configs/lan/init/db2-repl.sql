@@ -1,0 +1,7 @@
+CHANGE MASTER TO
+  MASTER_HOST='10.0.3.2',
+  MASTER_PORT=3306,
+  MASTER_USER='repl',
+  MASTER_PASSWORD='<replication password>',
+  MASTER_USE_GTID=slave_pos,
+  MASTER_CONNECT_RETRY=10;
