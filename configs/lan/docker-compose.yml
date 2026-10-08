@@ -30,7 +30,7 @@ services:
   db1:
     image: mariadb:11
     container_name: db1
-    command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW
+    command: --server-id=1 --log-bin=mysql-bin --binlog-format=ROW --log-slave-updates
     restart: unless-stopped
     environment:
       MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
@@ -43,13 +43,11 @@ services:
     networks:
       net-data:
         ipv4_address: 10.0.3.2
-        aliases: [db]
-
 
   db2:
     image: mariadb:11
     container_name: db2
-    command: --server-id=2 --read-only=ON
+    command: --server-id=2 --log-bin=mysql-bin --binlog-format=ROW --log-slave-updates
     restart: unless-stopped
     depends_on: [db1]
     environment:
@@ -64,9 +62,17 @@ services:
       net-data:
         ipv4_address: 10.0.3.3
 
-
-
-
+  haproxy:
+    image: haproxy:lts
+    container_name: haproxy
+    restart: unless-stopped
+    depends_on: [db1, db2]
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro,z
+    networks:
+      net-data:
+        ipv4_address: 10.0.3.4
+        aliases: [db]
 
   app1:
     image: ghcr.io/digininja/dvwa:latest
@@ -78,6 +84,8 @@ services:
       DB_USERNAME: dvwa
       DB_PASSWORD: ${DB_APP_PASSWORD}
     depends_on: [db1]
+    volumes:
+      - ./status/status.php:/var/www/html/status.php:ro,z
     networks:
       front1:
         ipv4_address: 10.0.1.2
@@ -94,6 +102,8 @@ services:
       DB_USERNAME: dvwa
       DB_PASSWORD: ${DB_APP_PASSWORD}
     depends_on: [db1]
+    volumes:
+      - ./status/status.php:/var/www/html/status.php:ro,z
     networks:
       front2:
         ipv4_address: 10.0.2.2

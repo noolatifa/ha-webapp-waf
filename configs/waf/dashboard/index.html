@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haute disponibilité · www.latifa.test</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --txt:#1d2330; --mut:#6b7385; --ok:#1f8a4c; --okbg:#e5f5ec; --ko:#c0352b; --kobg:#fbe9e7; --wait:#8a6d00; --waitbg:#fff6d6; --bd:#e2e5ea; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; background:var(--bg); color:var(--txt); }
+  header { padding:20px 28px; background:#1d2330; color:#fff; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; }
+  header h1 { margin:0; font-size:22px; font-weight:600; }
+  header span { color:#b9c0cf; font-size:14px; }
+  main { padding:24px 28px; display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:18px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:20px; }
+  .card h2 { margin:0 0 4px; font-size:14px; font-weight:600; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; }
+  .big { font-size:30px; font-weight:700; margin:6px 0 16px; }
+  .row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--bd); font-size:17px; }
+  .pill { padding:4px 12px; border-radius:999px; font-size:14px; font-weight:600; }
+  .up { background:var(--okbg); color:var(--ok); }
+  .down { background:var(--kobg); color:var(--ko); }
+  .wait { background:var(--waitbg); color:var(--wait); }
+  .note { color:var(--mut); font-size:13px; margin-top:10px; }
+  #journal { grid-column:1/-1; }
+  #log { list-style:none; margin:0; padding:0; max-height:260px; overflow:auto; font-size:15px; }
+  #log li { padding:8px 0; border-top:1px solid var(--bd); display:flex; gap:14px; }
+  #log time { color:var(--mut); font-variant-numeric:tabular-nums; min-width:70px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Haute disponibilité · www.latifa.test</h1>
+  <span id="maj">connexion…</span>
+</header>
+<main>
+  <section class="card">
+    <h2>WAF / load balancer</h2>
+    <div class="big" id="waf-actif">…</div>
+    <div class="row"><span>waf1 · 192.168.80.11</span><span class="pill wait" id="waf1">…</span></div>
+    <div class="row"><span>waf2 · 192.168.80.12</span><span class="pill wait" id="waf2">…</span></div>
+    <div class="note">Le WAF actif porte la VIP 192.168.80.100 (keepalived).</div>
+  </section>
+  <section class="card">
+    <h2>Applications</h2>
+    <div class="big" id="app-servie">…</div>
+    <div class="row"><span>app1 · 10.0.1.2</span><span class="pill wait" id="app1">…</span></div>
+    <div class="row"><span>app2 · 10.0.2.2</span><span class="pill wait" id="app2">…</span></div>
+    <div class="note">Répartition par nginx (hash de l'adresse client).</div>
+  </section>
+  <section class="card">
+    <h2>Base de données</h2>
+    <div class="big" id="db-active">…</div>
+    <div class="row"><span>db1 · 10.0.3.2</span><span class="pill wait" id="db1">…</span></div>
+    <div class="row"><span>db2 · 10.0.3.3</span><span class="pill wait" id="db2">…</span></div>
+    <div class="note">Aiguillage par HAProxy, réplication GTID entre db1 et db2.</div>
+  </section>
+  <section class="card" id="journal">
+    <h2>Journal des bascules <button id="effacer" style="float:right;font-size:13px;padding:4px 10px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer">Effacer</button></h2>
+    <ul id="log"></ul>
+  </section>
+</main>
+<script>
+const precedent = {};
+const CLE = 'journal-ha';
+function heure() { return new Date().toLocaleTimeString('fr-FR'); }
+function charger() { try { return JSON.parse(localStorage.getItem(CLE)) || []; } catch (e) { return []; } }
+function sauver(j) { try { localStorage.setItem(CLE, JSON.stringify(j.slice(0, 200))); } catch (e) {} }
+function afficher(h, texte) {
+  const li = document.createElement('li');
+  li.innerHTML = '<time></time><span></span>';
+  li.firstChild.textContent = h;
+  li.lastChild.textContent = texte;
+  document.getElementById('log').prepend(li);
+}
+function noter(texte) {
+  const h = heure();
+  afficher(h, texte);
+  const j = charger(); j.unshift([h, texte]); sauver(j);
+}
+charger().slice().reverse().forEach(e => afficher(e[0], e[1]));
+document.getElementById('effacer').onclick = () => { sauver([]); document.getElementById('log').innerHTML = ''; };
+function pastille(id, etat) {
+  const el = document.getElementById(id);
+  const v = etat || 'DOWN';
+  const classe = v === 'UP' ? 'up' : (v.includes('/') ? 'wait' : 'down');
+  el.textContent = v;
+  el.className = 'pill ' + classe;
+  changement(id, el.textContent);
+}
+function texte(id, valeur) {
+  document.getElementById(id).textContent = valeur;
+  changement(id, valeur);
+}
+function changement(id, valeur) {
+  if (precedent[id] !== undefined && precedent[id] !== valeur) noter(id + ' : ' + precedent[id] + ' → ' + valeur);
+  precedent[id] = valeur;
+}
+async function lire(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 1500);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; } finally { clearTimeout(t); }
+}
+async function cycle() {
+  const [actif, w1, w2, a1, a2, servie] = await Promise.all([
+    lire('/status/waf'),
+    lire('https://192.168.80.11/status/waf'),
+    lire('https://192.168.80.12/status/waf'),
+    lire('/status/app1'),
+    lire('/status/app2'),
+    lire('/status.php')
+  ]);
+  texte('waf-actif', actif ? 'Actif : ' + actif.node : 'Aucun WAF');
+  pastille('waf1', w1 ? 'UP' : 'DOWN');
+  pastille('waf2', w2 ? 'UP' : 'DOWN');
+  texte('app-servie', servie ? 'Vous êtes servi par ' + servie.app : 'Aucune app');
+  pastille('app1', a1 ? 'UP' : 'DOWN');
+  pastille('app2', a2 ? 'UP' : 'DOWN');
+  const info = servie || a1 || a2;
+  texte('db-active', info && info.db_active ? 'Active : ' + info.db_active : 'Aucune base');
+  pastille('db1', info && info.db ? info.db.db1 : null);
+  pastille('db2', info && info.db ? info.db.db2 : null);
+  document.getElementById('maj').textContent = 'mis à jour à ' + heure();
+}
+cycle();
+setInterval(cycle, 1000);
+</script>
+</body>
+</html>

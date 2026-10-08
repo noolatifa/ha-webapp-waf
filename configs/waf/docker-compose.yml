@@ -4,9 +4,10 @@ services:
     image: owasp/modsecurity-crs:nginx
     container_name: waf
     restart: unless-stopped
-    environment: 
+    environment:
       BACKEND: http://10.0.1.2
       MODSEC_RULE_ENGINE: "On"
+      NODE_NAME: ${NODE_NAME}
 
     ports:
       - "80:8080"
@@ -15,3 +16,4 @@ services:
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro,z
       - ./certs:/etc/nginx/certs:ro,z
+      - ./dashboard:/etc/nginx/dashboard:ro,z

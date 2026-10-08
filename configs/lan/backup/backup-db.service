@@ -1,0 +1,6 @@
+[Unit]
+Description=Dump de la base dvwa depuis db2
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/backup-db.sh
