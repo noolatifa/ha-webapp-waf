@@ -1,8 +1,10 @@
-# High-Availability Web Application Behind an Open-Source WAF
+﻿# High-Availability Web Application Behind an Open-Source WAF
 
 Lab build of a secure, highly available hosting architecture for a web application and its database: nginx + ModSecurity + OWASP Core Rule Set at the edge, keepalived virtual IP, HAProxy database failover and a live dashboard, on RHEL 9.5 and Docker Compose. DVWA and MariaDB are the test application and engine.
 
 ![Architecture](docs/images/architecture.svg)
+
+![HA dashboard](docs/images/dashboard.png)
 
 Documentation (reproducible runbook): [docs/00-index.md](docs/00-index.md)
 
@@ -14,7 +16,7 @@ Documentation (reproducible runbook): [docs/00-index.md](docs/00-index.md)
 - Database: GTID replication, automatic failover through HAProxy, planned switchback script.
 - Operations: live HA dashboard, daily backups.
 
-⚠️ **Known limitation:** the application and database tier (app1, app2, db1, db2, HAProxy) runs on a single VM. Shutting it down stops the service. Details and the other limitations: [docs/18-known-limitations.md](docs/18-known-limitations.md).
+âš ï¸ **Known limitation:** the application and database tier (app1, app2, db1, db2, HAProxy) runs on a single VM. Shutting it down stops the service. Details and the other limitations: [docs/18-known-limitations.md](docs/18-known-limitations.md).
 
 ## Roadmap
 
