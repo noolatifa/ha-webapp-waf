@@ -1,19 +1,24 @@
 # High-Availability Web Application Behind an Open-Source WAF
 
-Lab build of a highly available web application protected by nginx, ModSecurity and the OWASP Core Rule Set, with keepalived failover, on RHEL 9.5 and Docker Compose.
+Lab build of a secure, highly available hosting architecture for a web application and its database: nginx + ModSecurity + OWASP Core Rule Set at the edge, keepalived virtual IP, HAProxy database failover and a live dashboard, on RHEL 9.5 and Docker Compose. DVWA and MariaDB are the test application and engine.
 
 ![Architecture](docs/images/architecture.svg)
 
-Documentation: [docs/00-index.md](docs/00-index.md)
+Documentation (reproducible runbook): [docs/00-index.md](docs/00-index.md)
 
 ## Status
 
-Status: V1, stages 01–13 completed; 
-V2 in progress.
+**V2 completed** (stages 01 to 17), tag `v2.0`:
+- Edge: two WAF nodes behind a virtual IP, HTTPS only, ModSecurity + OWASP CRS, host firewall.
+- Applications: two instances on separate VLANs, health-based load balancing with session affinity.
+- Database: GTID replication, automatic failover through HAProxy, planned switchback script.
+- Operations: live HA dashboard, daily backups.
+
+⚠️ **Known limitation:** the application and database tier (app1, app2, db1, db2, HAProxy) runs on a single VM. Shutting it down stops the service. Details and the other limitations: [docs/18-known-limitations.md](docs/18-known-limitations.md).
 
 ## Roadmap
 
-- **V1:** WAF/LB cluster with virtual IP, two application instances, replicated database.
-- **V2:** SQL proxy with automatic failover, backups, shared sessions.
-- **V3:** Security monitoring (Wazuh) and centralised logging.
-- **Automation:** Ansible playbooks to deploy the full lab.
+- **V1 (done):** WAF/LB cluster with virtual IP, two application instances, replicated database.
+- **V2 (done):** SQL proxy with automatic failover, switchback, dashboard, backups.
+- **V3 (next):** two LAN hosts (no single point of failure), shared sessions, `DOCKER-USER` filtering, encrypted off-host backups.
+- **Later:** security monitoring (Wazuh), centralised logging, Ansible automation.

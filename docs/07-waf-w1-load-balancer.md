@@ -36,8 +36,10 @@ name: wafconf
 services:
   waf:
     image: owasp/modsecurity-crs:nginx
+    container_name: waf
     restart: unless-stopped
     environment:
+      BACKEND: http://10.0.1.2
       MODSEC_RULE_ENGINE: "Off"
     ports:
       - "80:8080"
@@ -45,7 +47,8 @@ services:
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro,z
 ```
-- Service named `waf` (generic): **identical on waf1 and waf2**, same commands everywhere.
+- Service and container named `waf`: **identical on waf1 and waf2**; the keepalived health check (stage 12) relies on the container name.
+- `BACKEND`: required by the image's default configuration; unused once our template replaces it.
 - `"Off"` **in quotes**: without them, YAML reads `Off` as the boolean `false`.
 
 `/opt/waf/nginx/default.conf.template` (W1 version):

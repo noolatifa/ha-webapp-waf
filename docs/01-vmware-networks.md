@@ -5,7 +5,7 @@
 | **Objective** | Create the 4 virtual networks of the lab and attach each VM adapter |
 | **Where** | VMware Workstation, on the host PC (Windows) |
 | **Before** | VMware installed |
-| **After** | The host has 192.168.80.1 on VMnet2; every VM adapter is attached to the right network |
+| **After** | The host has 192.168.80.254 on VMnet2; every VM adapter is attached to the right network |
 
 ---
 
@@ -68,7 +68,7 @@ In PowerShell or cmd, on the host:
 ```
 ipconfig
 ```
-**Expected**: a **VMware Network Adapter VMnet2** adapter with **192.168.80.1**, and a **VMnet8** adapter in 192.168.x.1.
+**Expected**: a **VMware Network Adapter VMnet2** adapter with **192.168.80.254**, and a **VMnet8** adapter in 192.168.x.1.
 
 ---
 

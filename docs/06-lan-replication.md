@@ -154,6 +154,6 @@ Snapshot **`lan-v1-ok`**.
 
 | Limitation | Evolution |
 |---|---|
-| If db1 fails: **manual** failover to db2 | V2: HAProxy SQL + master-master |
-| No backup | V2: scheduled `mariadb-backup` |
+| If db1 fails: **manual** failover to db2 | Done in V2: HAProxy, stage 14 (db2 `read-only` removed) |
+| No backup | Done in V2: scheduled dump, stage 17 |
 | `read-only` does not restrict root | Administrative rule |

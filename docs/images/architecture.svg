@@ -36,7 +36,7 @@
   <rect x="60" y="354" width="320" height="28" rx="3" fill="#FDE2EC" stroke="#D6457A"/>
   <text x="220" y="373" text-anchor="middle" fill="#6B1A3D" font-size="12.5">TLS 1.2/1.3 - www.latifa.test (lab CA) - HSTS</text>
   <text x="220" y="400" text-anchor="middle" fill="#333333" font-size="12.5">firewalld: SSH from .254 only, VRRP from peer</text>
-  <text x="220" y="418" text-anchor="middle" fill="#333333" font-size="12.5">SELinux - lab CA in /root/lab-ca</text>
+  <text x="220" y="418" text-anchor="middle" fill="#333333" font-size="12.5">SELinux - lab CA - /dashboard (admin host)</text>
 
   <!-- waf2 -->
   <rect x="500" y="206" width="360" height="220" rx="4" fill="#FFFFFF" stroke="#3A3A3A" stroke-width="1.3"/>
@@ -50,7 +50,7 @@
   <rect x="520" y="354" width="320" height="28" rx="3" fill="#FDE2EC" stroke="#D6457A"/>
   <text x="680" y="373" text-anchor="middle" fill="#6B1A3D" font-size="12.5">TLS 1.2/1.3 - www.latifa.test (lab CA) - HSTS</text>
   <text x="680" y="400" text-anchor="middle" fill="#333333" font-size="12.5">firewalld: SSH from .254 only, VRRP from peer</text>
-  <text x="680" y="418" text-anchor="middle" fill="#333333" font-size="12.5">SELinux</text>
+  <text x="680" y="418" text-anchor="middle" fill="#333333" font-size="12.5">SELinux - /dashboard (admin host)</text>
 
   <line x1="400" y1="306" x2="500" y2="306" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 4"/>
   <text x="450" y="296" text-anchor="middle" fill="#555555" font-size="12.5">VRRP</text>
@@ -85,32 +85,36 @@
 
   <!-- net-data -->
   <rect x="60" y="680" width="780" height="180" rx="4" fill="#FFF4CC" stroke="#D9A400"/>
-  <path d="M150 620 V736" fill="none" stroke="#555555" stroke-width="1.2" marker-end="url(#a)"/>
+  <path d="M150 620 V706 H340 V736" fill="none" stroke="#555555" stroke-width="1.2" marker-end="url(#a)"/>
   <text x="160" y="660" fill="#555555" font-size="12.5">access 10.0.3.5</text>
-  <path d="M670 620 V706 H215 V736" fill="none" stroke="#555555" stroke-width="1.2" marker-end="url(#a)"/>
+  <path d="M670 620 V706 H400 V736" fill="none" stroke="#555555" stroke-width="1.2" marker-end="url(#a)"/>
   <text x="680" y="660" fill="#555555" font-size="12.5">access 10.0.3.6</text>
-  <text x="440" y="698" text-anchor="middle" fill="#4D3800" font-size="12.5">SQL :3306 -&gt; db1</text>
+  <text x="460" y="698" text-anchor="middle" fill="#4D3800" font-size="12.5">SQL :3306 -&gt; db (HAProxy)</text>
 
   <rect x="90" y="740" width="170" height="56" rx="4" fill="#FDE2EC" stroke="#D6457A"/>
   <text x="175" y="763" text-anchor="middle" fill="#6B1A3D" font-size="15" font-weight="600">db1 MariaDB</text>
   <text x="175" y="783" text-anchor="middle" fill="#9C3460" font-size="12.5">primary 10.0.3.2</text>
-  <rect x="290" y="740" width="160" height="56" rx="4" fill="none" stroke="#D6457A" stroke-dasharray="5 4"/>
+  <rect x="290" y="740" width="160" height="56" rx="4" fill="#FDE2EC" stroke="#D6457A"/>
   <text x="370" y="763" text-anchor="middle" fill="#6B1A3D" font-size="15" font-weight="600">HAProxy SQL</text>
-  <text x="370" y="783" text-anchor="middle" fill="#9C3460" font-size="12.5">V2 - 10.0.3.4</text>
+  <text x="370" y="783" text-anchor="middle" fill="#9C3460" font-size="12.5">db - 10.0.3.4 - failover</text>
   <rect x="480" y="740" width="170" height="56" rx="4" fill="#FDE2EC" stroke="#D6457A"/>
   <text x="565" y="763" text-anchor="middle" fill="#6B1A3D" font-size="15" font-weight="600">db2 MariaDB</text>
   <text x="565" y="783" text-anchor="middle" fill="#9C3460" font-size="12.5">replica 10.0.3.3</text>
-  <rect x="680" y="740" width="130" height="56" rx="4" fill="none" stroke="#D6457A" stroke-dasharray="5 4"/>
+  <rect x="680" y="740" width="130" height="56" rx="4" fill="#FDE2EC" stroke="#D6457A"/>
   <text x="745" y="763" text-anchor="middle" fill="#6B1A3D" font-size="15" font-weight="600">backup</text>
-  <text x="745" y="783" text-anchor="middle" fill="#9C3460" font-size="12.5">V2</text>
+  <text x="745" y="783" text-anchor="middle" fill="#9C3460" font-size="12.5">daily dump of db2</text>
+  <line x1="290" y1="768" x2="264" y2="768" stroke="#555555" stroke-width="1.2" marker-end="url(#a)"/>
+  <line x1="450" y1="768" x2="476" y2="768" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <line x1="650" y1="768" x2="676" y2="768" stroke="#555555" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#a)"/>
   <path d="M175 796 V810 H565 V800" fill="none" stroke="#7A5C00" stroke-width="1.2" stroke-dasharray="5 4" marker-end="url(#a)"/>
 
   <text x="450" y="832" text-anchor="middle" fill="#4D3800" font-size="14" font-weight="600">VLAN net-data - 10.0.3.0/28 - internal - databases only</text>
-  <text x="450" y="851" text-anchor="middle" fill="#7A5C00" font-size="12.5">bridge br-netdata (.1) - encrypted GTID replication db1 -&gt; db2</text>
+  <text x="450" y="851" text-anchor="middle" fill="#7A5C00" font-size="12.5">bridge br-netdata (.1) - encrypted GTID replication db1 -&gt; db2 - db2 used only if db1 is down</text>
 
   <text x="450" y="884" text-anchor="middle" fill="#555555" font-size="12.5">front1 and front2 enter the VM through ens160 and ens224 (parent interfaces, no IP)</text>
   <text x="450" y="906" text-anchor="middle" fill="#1F1F1F" font-size="14" font-weight="600">VM lan - RHEL 9.5 + Docker Compose</text>
   <text x="36" y="946" fill="#1F1F1F" font-size="13.5" font-weight="600">Zone 3 - LAN</text>
+  <text x="864" y="946" text-anchor="end" fill="#C0352B" font-size="12.5" font-weight="600">Known limitation: single LAN host = single point of failure (V3: lan1 + lan2)</text>
 
   <!-- legend -->
   <rect x="40" y="978" width="14" height="14" rx="3" fill="#FFF4CC" stroke="#D9A400"/>
@@ -121,5 +125,5 @@
   <text x="252" y="990" fill="#333333" font-size="12.5">Service</text>
   <text x="330" y="990" fill="#333333" font-size="12.5">access = application interface in net-data</text>
   <line x1="640" y1="985" x2="680" y2="985" stroke="#555555" stroke-dasharray="5 4"/>
-  <text x="690" y="990" fill="#333333" font-size="12.5">standby path / V2</text>
+  <text x="690" y="990" fill="#333333" font-size="12.5">standby path</text>
 </svg>
