@@ -2,21 +2,22 @@
 
 | | |
 |---|---|
-| **Objective** | Create the 4 virtual networks of the lab and attach each VM adapter |
+| **Objective** | Create the 5 virtual networks of the lab and attach each VM adapter |
 | **Where** | VMware Workstation, on the host PC (Windows) |
 | **Before** | VMware installed |
 | **After** | The host has 192.168.80.254 on VMnet2; every VM adapter is attached to the right network |
 
 ---
 
-## 1. The 4 networks and their role
+## 1. The 5 networks and their role
 
 | Network | VMware type | Role | Attached |
 |---|---|---|---|
 | **VMnet2** | Host-only | Lab WAN: client access and administration | host, waf1, waf2 (+ clients later) |
-| **front1** | LAN Segment | VLAN of app1 | waf1, waf2, lan |
-| **front2** | LAN Segment | VLAN of app2 | waf1, waf2, lan |
-| **VMnet8** | NAT (temporary) | Internet access during the build **only** | waf1, waf2, lan |
+| **front1** | LAN Segment | VLAN of app1 | waf1, waf2, app1 |
+| **front2** | LAN Segment | VLAN of app2 | waf1, waf2, app2 |
+| **net-data** | LAN Segment | Data network: applications ↔ databases, Galera | app1, app2, db1, db2 |
+| **VMnet8** | NAT (temporary) | Internet access during the build **only** | all VMs |
 
 - **Host-only**: private network between the VMs **and** the host, with no internet access.
 - **LAN Segment**: private virtual switch **between VMs only**; the host is not attached.
@@ -44,9 +45,9 @@ Exists by default. Check: **Use local DHCP service** is checked (the VMs' NAT ad
 
 ⚠️ Never click **Restore Defaults**: it resets every network, VMnet2 included.
 
-## 4. LAN Segments front1 and front2
+## 4. LAN Segments front1, front2 and net-data
 
-In the **Settings** of any VM → a network adapter → **LAN Segment → LAN Segments… → Add**: create `front1`, then `front2`.
+In the **Settings** of any VM → a network adapter → **LAN Segment → LAN Segments… → Add**: create `front1`, `front2`, then `net-data`.
 Names are **case-sensitive**: `front1` and `Front1` would be two different switches.
 
 ## 5. Attach each VM's adapters
@@ -54,11 +55,13 @@ Names are **case-sensitive**: `front1` and `Front1` would be two different switc
 | VM | Adapter 1 | Adapter 2 | Adapter 3 | Adapter 4 |
 |---|---|---|---|---|
 | waf1, waf2 | Custom **VMnet2** | LAN Segment **front1** | LAN Segment **front2** | **NAT** |
-| lan | LAN Segment **front1** | LAN Segment **front2** | **NAT** | — |
+| app1 | **NAT** | LAN Segment **front1** | LAN Segment **net-data** | — |
+| app2 | **NAT** | LAN Segment **front2** | LAN Segment **net-data** | — |
+| db1, db2 | LAN Segment **net-data** | **NAT** | — | — |
 
 For each adapter: **Connected** and **Connect at power on** checked.
 
-lan has **no** adapter on VMnet2: it belongs to the internal zone and is invisible from the WAN.
+The application and database VMs have **no** adapter on VMnet2: they belong to the internal zones and are invisible from the WAN. The database VMs are attached to net-data only: they cannot reach the WAF nodes, and the WAF nodes cannot reach them.
 
 ---
 

@@ -3,16 +3,16 @@
 | | |
 |---|---|
 | **Objective** | Give every interface its correct address, and prove that each link works |
-| **Where** | waf1, waf2, lan (VMware console first, then SSH) |
+| **Where** | All 6 VMs (VMware console first, then SSH) |
 | **Before** | Stages 01 and 02 completed |
-| **After** | SSH from the host to waf1/waf2; waf1 ↔ waf2 on WAN, front1, front2; internet through NAT |
+| **After** | SSH from the host to waf1/waf2; waf1 ↔ waf2 on WAN, front1, front2; WAF ↔ apps on the fronts; apps ↔ databases on net-data; internet through NAT |
 
 ---
 
 ## 1. Principle: interface ≠ connection profile
 
 - **Interface**: name assigned by Linux, cannot be chosen — `ens160`, `ens161`, `ens224`, `ens256`.
-- **Connection profile**: NetworkManager configuration applied to an interface, with a name we choose — `wan`, `front1`, `front2`, `nat`.
+- **Connection profile**: NetworkManager configuration applied to an interface, with a name we choose — `wan`, `front1`, `front2`, `data`, `nat`.
 
 ```
 interface ens160  ──►  profile "wan"  ──►  192.168.80.11/24
@@ -35,17 +35,22 @@ Only VMnet8 has a DHCP server: the interface that obtains an address is the NAT 
 ```bash
 for i in ens160 ens161 ens224 ens256; do nmcli con add type ethernet ifname $i con-name t-$i ipv4.method auto ipv4.dhcp-timeout 10 ipv6.method disabled; nmcli con up t-$i; done ; ip -br a
 ```
+- list only the interfaces present on the VM (`ip -br link`);
 - one interface shows `successfully activated` and an address 192.168.x.y → **NAT**;
-- the others: `could not be reserved` → no DHCP → WAN or fronts.
+- the others: `could not be reserved` → no DHCP → WAN, front or net-data. On a VM with two LAN segments (app1, app2), tell front and net-data apart by MAC address (method 1).
 - Then: **rename** the NAT profile (`nmcli con mod t-<NAT> connection.id nat`) and delete the other `t-…` profiles.
 
 ### Resulting mapping
 
-| VM | WAN | front1 | front2 | NAT (temporary) |
-|---|---|---|---|---|
-| waf1 | ens160 | ens224 | ens256 | ens161 |
-| waf2 | ens160 | ens224 | **ens161** | **ens256** |
-| lan | — | ens160 | ens224 | ens256 |
+| VM | WAN | front1 | front2 | net-data | NAT (temporary) |
+|---|---|---|---|---|---|
+| waf1 | ens160 | ens224 | ens256 | — | ens161 |
+| waf2 | ens160 | ens224 | ens256 | — | ens161 |
+| app1 | — | ens224 | — | ens256 | ens160 |
+| app2 | — | — | ens224 | ens256 | ens160 |
+| db1, db2 | — | — | — | ens160 | ens224 |
+
+(waf2 was rebuilt in V3 as a clone of waf1: its interfaces now follow waf1's order.)
 
 ---
 
@@ -67,30 +72,36 @@ nmcli con up wan ; nmcli con up front1 ; nmcli con up front2 ; nmcli con up nat
 ```bash
 nmcli con add type ethernet ifname ens160 con-name wan    ipv4.method manual ipv4.addresses 192.168.80.12/24 ipv6.method disabled
 nmcli con add type ethernet ifname ens224 con-name front1 ipv4.method manual ipv4.addresses 10.0.1.4/29 ipv6.method disabled
-nmcli con add type ethernet ifname ens161 con-name front2 ipv4.method manual ipv4.addresses 10.0.2.4/29 ipv6.method disabled
-nmcli con add type ethernet ifname ens256 con-name nat    ipv4.method auto ipv6.method disabled
+nmcli con add type ethernet ifname ens256 con-name front2 ipv4.method manual ipv4.addresses 10.0.2.4/29 ipv6.method disabled
+nmcli con add type ethernet ifname ens161 con-name nat    ipv4.method auto ipv6.method disabled
 nmcli con up wan ; nmcli con up front1 ; nmcli con up front2 ; nmcli con up nat
 ```
 
-### lan — the front interfaces have **no IP**
+### app1 / app2
 ```bash
-nmcli con add type ethernet ifname ens160 con-name front1 ipv4.method disabled ipv6.method disabled
-nmcli con add type ethernet ifname ens224 con-name front2 ipv4.method disabled ipv6.method disabled
-nmcli con add type ethernet ifname ens256 con-name nat    ipv4.method auto ipv6.method disabled
-nmcli con up front1 ; nmcli con up front2 ; nmcli con up nat
+nmcli con add type ethernet ifname ens224 con-name front1 ipv4.method manual ipv4.addresses 10.0.1.2/29 ipv6.method disabled
+nmcli con add type ethernet ifname ens256 con-name data   ipv4.method manual ipv4.addresses 10.0.3.5/28 ipv6.method disabled
+nmcli con add type ethernet ifname ens160 con-name nat    ipv4.method auto ipv6.method disabled
+nmcli con up front1 ; nmcli con up data ; nmcli con up nat
 ```
+app2: profile `front2` with `10.0.2.2/29`, `data` with `10.0.3.6/28`.
+
+### db1 / db2
+```bash
+nmcli con add type ethernet ifname ens160 con-name data ipv4.method manual ipv4.addresses 10.0.3.2/28 ipv6.method disabled
+nmcli con add type ethernet ifname ens224 con-name nat  ipv4.method auto ipv6.method disabled
+nmcli con up data ; nmcli con up nat
+```
+db2: `10.0.3.3/28`.
 
 | Option | Role |
 |---|---|
 | `ipv4.method manual` + `ipv4.addresses` | Static address |
 | `ipv4.method auto` | DHCP (NAT adapter only) |
-| `ipv4.method disabled` | Interface up **without an address**: parent interface of the macvlan containers, lan stays invisible on front1/front2 |
 | `ipv6.method disabled` | No IPv6: reduced exposure |
-| No `ipv4.gateway` on wan/front | The only default route goes through `nat` (temporary) |
+| No `ipv4.gateway` on wan/front/data | The only default route goes through `nat` (temporary) |
 
-Why create a profile even without an IP on lan: so that the interface is **brought up at boot** (macvlan needs an UP parent interface), and so that it never looks for DHCP.
-
-Why these addresses in the /29s: `.0` network, `.1` gateway reserved by Docker (macvlan), `.2` the application, `.3` waf1, `.4` waf2, `.7` broadcast. Same pattern in both VLANs.
+Why these addresses: in the /29s, `.2` the application, `.3` waf1, `.4` waf2 (`.1` was the Docker macvlan gateway in V2, kept free). In net-data (/28): `.2` db1, `.3` db2, `.5` app1, `.6` app2.
 
 ---
 
@@ -99,7 +110,7 @@ Why these addresses in the /29s: `.0` network, `.1` gateway reserved by Docker (
 ```
 waf2 (10.0.1.4) ─ens224─► front1 switch ─ens224─► waf1 (10.0.1.3)
                                 │
-                       lan ens160 (parent interface, no IP)
+                       app1 ens224 (10.0.1.2)
 ```
 1. waf2 sees that 10.0.1.3 is in **its own** network (10.0.1.0/29) → no router, direct delivery through ens224.
 2. **ARP**: waf2 asks on the switch "who has 10.0.1.3?"; waf1 answers with its MAC address.
@@ -117,18 +128,12 @@ See the full matrix in `11-connectivity-tests.md` (tests 1 to 10). Minimum:
 |---|---|---|
 | host | `ping 192.168.80.11` / `.12` then `ssh <user>@192.168.80.11` | Success |
 | waf1 | `ping -c 2 10.0.1.4` and `ping -c 2 10.0.2.4` | waf2 answers on front1 and front2 |
-| waf1, waf2, lan | `ping -c 2 8.8.8.8` | Internet reachable |
-| waf2 | `ip route get 10.0.2.3` | `dev ens161 src 10.0.2.4` |
+| every VM | `ping -c 2 8.8.8.8` | Internet reachable (NAT, build only) |
+| waf2 | `ip route get 10.0.2.3` | `dev ens256 src 10.0.2.4` |
+| waf1 | `ping -c 2 10.0.1.2` and `ping -c 2 10.0.2.2` | app1 and app2 answer |
+| app1, app2 | `ping -c 2 10.0.3.2` and `ping -c 2 10.0.3.3` | db1 and db2 answer on net-data |
 
-Wiring of lan's parent interfaces (address lent, then removed):
-```bash
-ip addr add 10.0.1.6/29 dev ens160
-ping -c 2 10.0.1.3
-ip addr del 10.0.1.6/29 dev ens160
-```
-(same with `10.0.2.6` on `ens224` → `10.0.2.3`). Without an address, `ping` fails with `Network is unreachable`: a source address is required.
-
-Snapshot **`reseau-ok`** on the 3 VMs.
+Snapshot **`reseau-ok`** on every VM.
 
 ---
 
