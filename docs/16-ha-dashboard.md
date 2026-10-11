@@ -1,10 +1,10 @@
-# 16 · V2: High-Availability Dashboard
+# 16 · High-Availability Dashboard
 
 | | |
 |---|---|
 | **Objective** | Show live which WAF holds the VIP, which application serves the client, which database is active, and log every switch |
-| **Where** | lan (`/opt/lab`), waf1 then waf2 (`/opt/waf`), as root |
-| **Before** | Stages 13 and 14 |
+| **Where** | app1 and app2 (`/opt/app`), waf1 then waf2 (`/opt/waf`), as root |
+| **Before** | Stages 05 and 13 |
 | **After** | `https://www.latifa.test/dashboard`, admin host only, refreshed every second |
 
 ---
@@ -15,26 +15,23 @@
 |---|---|
 | WAF | `/status/waf` on the VIP (active node) and on `.11` / `.12` (each node) |
 | Applications | `/status/app1`, `/status/app2` (each app), `/status.php` through the load balancer (app serving the client) |
-| Database | `status.php`: `SELECT @@server_id` through `db`, and HAProxy stats CSV |
+| Database | `status.php` on each app: `SELECT @@server_id` through the local HAProxy, and its stats CSV (`127.0.0.1:8404`) |
 | Switch log | Any state change, stored in the browser (`localStorage`, 200 entries), **Effacer** button to clear |
 
 All dashboard routes are restricted to the admin host `192.168.80.254`.
 
 ---
 
-## 1. Status page on the applications (lan)
+## 1. Status page on the applications (app1, app2)
 
-```bash
-mkdir -p /opt/lab/status
-```
-[`configs/lan/status/status.php`](../configs/lan/status/status.php) → `/opt/lab/status/status.php`, then in **app1 and app2**:
+[`configs/app/status.php`](../configs/app/status.php) → `/opt/app/status.php`, mounted by the Compose file of stage 05:
 ```yaml
     volumes:
-      - ./status/status.php:/var/www/html/status.php:ro,z
+      - ./status.php:/var/www/html/status.php:ro,z
 ```
-```bash
-chmod 644 /opt/lab/status/status.php && cd /opt/lab && docker compose up -d app1 app2
-```
+- Connects to `127.0.0.1` (local HAProxy) and reads `http://127.0.0.1:8404/stats;csv`.
+- `@@server_id` 1 → `db1`, 2 → `db2`.
+
 Test from waf1: `curl -s http://10.0.1.2/status.php` → `{"app":"app1","db_active":"db1","db":{"db1":"UP","db2":"UP"}}` (same with `10.0.2.2` → `app2`).
 
 ---
@@ -69,7 +66,12 @@ Compose additions: `NODE_NAME: ${NODE_NAME}` and the `./dashboard:/etc/nginx/das
 
 ⚠️ Replacing a single bind-mounted file with `sed -i` keeps the old file in the container: restart the container after editing.
 
-Snapshots **`waf1-v2-dash`**, **`waf2-v2-dash`**.
+V3 update of the database card text (both nodes; the `dashboard` directory is mounted, no restart needed):
+```bash
+sed -i 's/Aiguillage par HAProxy, réplication GTID entre db1 et db2./HAProxy local sur chaque app, cluster Galera db1 + db2 + arbitre (garbd)./' /opt/waf/dashboard/index.html
+```
+
+Snapshots **`waf1-dash`**, **`waf2-dash`**.
 
 ---
 
@@ -78,8 +80,8 @@ Snapshots **`waf1-v2-dash`**, **`waf2-v2-dash`**.
 | Action | Expected on the dashboard |
 |---|---|
 | Open the page | waf1 active · app1 · db1 · all `UP` |
-| lan: `docker stop app1` / `start` | ~6 s: app1 `DOWN`, served by app2 / back `UP` |
-| lan: `docker stop db1` / `start`, then `/opt/lab/retour-db1.sh` | db1 `DOWN`, active db2 / db1 `UP`, still db2 / active db1 |
+| `poweroff` app1 / power on | ~10 s: app1 `DOWN`, served by app2, still logged in / back `UP` |
+| `poweroff` db1 / power on | ~4 s: db1 `DOWN`, active db2 / db1 `UP` and active again after ~10 s |
 | VMware: power off waf1 / on | ~3 s: active waf2, waf1 `DOWN` / waf1 active again |
 | Refresh (F5) | Switch log kept |
 | Another client IP | `403` on `/dashboard` |

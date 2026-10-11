@@ -9,7 +9,7 @@
 
 Why the **same** certificate: both WAF nodes will share the VIP (W5). With two different certificates, the client would see the site's identity change at every failover.
 
-Why the same configuration works: nginx targets **addresses** (10.0.1.2, 10.0.2.2); each VM finds its own interface through its routing table (on waf2, front2 = ens161, not ens256: irrelevant).
+Why the same configuration works: nginx targets **addresses** (10.0.1.2, 10.0.2.2); each VM finds its own interface through its routing table (the interface names may differ between nodes: irrelevant).
 
 ---
 
@@ -82,8 +82,8 @@ No copy of the private key must be left behind.
 | Trusted certificate | host | `curl.exe -sS --ssl-no-revoke -o NUL -w "%{http_code}\n" --resolve www.latifa.test:443:192.168.80.12 https://www.latifa.test/login.php` | `200` |
 | HTTP redirected | host | `curl.exe -sI http://192.168.80.12/login.php \| Select-String "^HTTP\|^location"` | `301` |
 | Injection | host | `curl.exe -sS --ssl-no-revoke -o NUL -w "%{http_code}\n" --resolve www.latifa.test:443:192.168.80.12 "https://www.latifa.test/login.php?id=1'%20OR%20'1'='1"` | `403` |
-| waf2 reaches both apps | host + lan | `curl.exe -sS --ssl-no-revoke -o NUL -D - --resolve www.latifa.test:443:192.168.80.12 https://www.latifa.test/login.php \| Select-String "x-backend"`; `docker stop app1`; run again; `docker start app1` | `10.0.1.2:80` → `10.0.1.2:80, 10.0.2.2:80` → `10.0.1.2:80` |
-| Path to app2 | waf1 / waf2 | `ip route get 10.0.2.2` | waf1: `dev ens256 src 10.0.2.3` · waf2: `dev ens161 src 10.0.2.4` |
+| waf2 reaches both apps | host + app1 | `curl.exe -sS --ssl-no-revoke -o NUL -D - --resolve www.latifa.test:443:192.168.80.12 https://www.latifa.test/login.php \| Select-String "x-backend"`; on app1 `docker stop dvwa`; run again; `docker start dvwa` | `10.0.1.2:80` → `10.0.1.2:80, 10.0.2.2:80` → `10.0.1.2:80` |
+| Path to app2 | waf1 / waf2 | `ip route get 10.0.2.2` | waf1: `dev ens256 src 10.0.2.3` · waf2: `dev ens256 src 10.0.2.4` |
 | Which node answered | waf1 and waf2 | `docker compose logs -f --tail 0 waf` in two windows, then curl to .12 | only **waf2**'s window reacts |
 
 `--resolve` sends the name to waf2 for one command only, without editing the `hosts` file.

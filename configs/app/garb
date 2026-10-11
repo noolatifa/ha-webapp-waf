@@ -1,0 +1,2 @@
+GALERA_NODES="10.0.3.2:4567 10.0.3.3:4567"
+GALERA_GROUP="lab_cluster"

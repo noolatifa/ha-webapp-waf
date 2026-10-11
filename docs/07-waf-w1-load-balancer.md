@@ -114,7 +114,7 @@ docker compose up -d && docker compose exec waf nginx -t && docker compose ps
 - `-D -` displays the headers; `Select-String` keeps the `X-Backend` line.
 - **Expected**: alternating `10.0.1.2:80` / `10.0.2.2:80`.
 
-**Failover**: on lan `docker stop app1`, run the command again → `10.0.2.2:80`, sometimes `10.0.1.2:80, 10.0.2.2:80` (attempt on app1, failure, retry on app2 **with no error for the client**). Then `docker start app1`, wait ~15 s → app1 reintegrated.
+**Failover**: on app1 `docker stop dvwa`, run the command again → `10.0.2.2:80`, sometimes `10.0.1.2:80, 10.0.2.2:80` (attempt on app1, failure, retry on app2 **with no error for the client**). Then `docker start dvwa`, wait ~15 s → app1 reintegrated.
 
 ---
 

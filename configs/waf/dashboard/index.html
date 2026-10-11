@@ -52,7 +52,7 @@
     <div class="big" id="db-active">…</div>
     <div class="row"><span>db1 · 10.0.3.2</span><span class="pill wait" id="db1">…</span></div>
     <div class="row"><span>db2 · 10.0.3.3</span><span class="pill wait" id="db2">…</span></div>
-    <div class="note">Aiguillage par HAProxy, réplication GTID entre db1 et db2.</div>
+    <div class="note">HAProxy local sur chaque app, cluster Galera db1 + db2 + arbitre (garbd).</div>
   </section>
   <section class="card" id="journal">
     <h2>Journal des bascules <button id="effacer" style="float:right;font-size:13px;padding:4px 10px;border:1px solid var(--bd);border-radius:8px;background:#fff;cursor:pointer">Effacer</button></h2>

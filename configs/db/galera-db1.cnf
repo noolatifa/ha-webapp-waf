@@ -1,0 +1,13 @@
+[mysqld]
+binlog_format=ROW
+default_storage_engine=InnoDB
+innodb_autoinc_lock_mode=2
+bind-address=10.0.3.2
+server_id=1
+wsrep_on=ON
+wsrep_provider=/usr/lib64/galera/libgalera_smm.so
+wsrep_cluster_name=lab_cluster
+wsrep_cluster_address=gcomm://10.0.3.2,10.0.3.3
+wsrep_node_name=db1
+wsrep_node_address=10.0.3.2
+wsrep_sst_method=rsync
