@@ -1,0 +1,16 @@
+name: app
+services:
+  dvwa:
+    image: ghcr.io/digininja/dvwa:latest
+    container_name: dvwa
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      DB_SERVER: 127.0.0.1
+      DB_DATABASE: dvwa
+      DB_USERNAME: dvwa
+      DB_PASSWORD: ${DB_APP_PASSWORD}
+    volumes:
+      - ./status.php:/var/www/html/status.php:ro,z
+      - ./session_db.php:/var/www/session_db.php:ro,z
+      - ./session.ini:/usr/local/etc/php/conf.d/zz-session.ini:ro,z
