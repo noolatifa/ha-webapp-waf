@@ -1,6 +1,6 @@
-﻿# High-Availability Web Application Behind an Open-Source WAF
+# High-Availability Web Application Behind an Open-Source WAF
 
-Lab build of a secure, highly available hosting architecture for a web application and its database: nginx + ModSecurity + OWASP Core Rule Set at the edge, keepalived virtual IP, HAProxy database failover and a live dashboard, on RHEL 9.5 and Docker Compose. DVWA and MariaDB are the test application and engine.
+Lab build of a secure, highly available hosting architecture for a web application and its database: nginx + ModSecurity + OWASP Core Rule Set at the edge behind a keepalived virtual IP, two application nodes, and a MariaDB Galera cluster, on RHEL 9.5 (VMware Workstation). DVWA is the protected test application.
 
 ![Architecture](docs/images/architecture.svg)
 
@@ -10,17 +10,24 @@ Documentation (reproducible runbook): [docs/00-index.md](docs/00-index.md)
 
 ## Status
 
-**V2 completed** (stages 01 to 17), tag `v2.0`:
-- Edge: two WAF nodes behind a virtual IP, HTTPS only, ModSecurity + OWASP CRS, host firewall.
-- Applications: two instances on separate VLANs, health-based load balancing with session affinity.
-- Database: GTID replication, automatic failover through HAProxy, planned switchback script.
-- Operations: live HA dashboard, daily backups.
+**V3 completed**, tag `v3.0`: no single VM failure stops the service.
 
-âš ï¸ **Known limitation:** the application and database tier (app1, app2, db1, db2, HAProxy) runs on a single VM. Shutting it down stops the service. Details and the other limitations: [docs/18-known-limitations.md](docs/18-known-limitations.md).
+| Layer | VMs | Failover |
+|---|---|---|
+| Edge: WAF, load balancer, TLS | waf1, waf2 + VIP | ~3 s (VRRP + WAF health check) |
+| Applications | app1, app2 (separate VLANs) | ~10 s, user stays logged in (sessions in Galera) |
+| Database | db1, db2 (Galera, synchronous) + garbd arbitrator on app1 | ~4 s through a local HAProxy on each app, no data loss |
+
+Validated by powering off each VM in turn: [docs/15-failover-tests.md](docs/15-failover-tests.md). Limitations: [docs/18-known-limitations.md](docs/18-known-limitations.md).
+
+## Versions
+
+| Version | Where | Summary |
+|---|---|---|
+| V3 | `main`, tag `v3.0` | 6 VMs, Galera + arbitrator, shared sessions |
+| V2 | tag `v2.0`, branch `single-point-of-failure-lan` | Application and database tier on a single LAN VM (single point of failure) |
 
 ## Roadmap
 
-- **V1 (done):** WAF/LB cluster with virtual IP, two application instances, replicated database.
-- **V2 (done):** SQL proxy with automatic failover, switchback, dashboard, backups.
-- **V3 (next):** two LAN hosts (no single point of failure), shared sessions, `DOCKER-USER` filtering, encrypted off-host backups.
+- **Next:** automatic cold start of the cluster, TLS on the data network, Galera-aware health check, encrypted off-host backups.
 - **Later:** security monitoring (Wazuh), centralised logging, Ansible automation.
